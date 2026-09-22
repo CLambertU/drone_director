@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Virtualenv
+.venv/
+.venv-runtime/
+venv/
+
+# Environment
+.env
+.env.local
+
+# Data / runtime
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+*.log
+
+# Node / frontend
+node_modules/
+frontend/dist/
+npm-debug.log*
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

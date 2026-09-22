@@ -1,0 +1,87 @@
+{
+  "city": {
+    "name": "天枢市",
+    "origin": { "latitude": 30.5728, "longitude": 104.0668, "altitude": 0 },
+    "min_x": -100,
+    "min_y": -100,
+    "max_x": 2100,
+    "max_y": 2100,
+    "grid_resolution": 10,
+    "building_seed": 42,
+    "generate_buildings": true
+  },
+  "buildings": [],
+  "waypoints": [
+    { "id": "WP01", "name": "北郊起降场-西", "type": "vertiport", "position": { "x": 0, "y": 0, "z": 120 }, "capacity": 12, "risk_level": 0.15 },
+    { "id": "WP02", "name": "北郊起降场-中", "type": "vertiport", "position": { "x": 1000, "y": 0, "z": 120 }, "capacity": 12, "risk_level": 0.2 },
+    { "id": "WP03", "name": "北郊起降场-东", "type": "vertiport", "position": { "x": 2000, "y": 0, "z": 120 }, "capacity": 12, "risk_level": 0.18 },
+    { "id": "WP04", "name": "西城起降场", "type": "vertiport", "position": { "x": 0, "y": 1000, "z": 120 }, "capacity": 10, "risk_level": 0.3 },
+    { "id": "WP05", "name": "中央枢纽", "type": "vertiport", "position": { "x": 1000, "y": 1000, "z": 120 }, "capacity": 20, "risk_level": 0.45 },
+    { "id": "WP06", "name": "东城起降场", "type": "vertiport", "position": { "x": 2000, "y": 1000, "z": 120 }, "capacity": 10, "risk_level": 0.28 },
+    { "id": "WP07", "name": "南郊起降场-西", "type": "vertiport", "position": { "x": 0, "y": 2000, "z": 120 }, "capacity": 12, "risk_level": 0.16 },
+    { "id": "WP08", "name": "南郊起降场-中", "type": "vertiport", "position": { "x": 1000, "y": 2000, "z": 120 }, "capacity": 12, "risk_level": 0.22 },
+    { "id": "WP09", "name": "南郊起降场-东", "type": "vertiport", "position": { "x": 2000, "y": 2000, "z": 120 }, "capacity": 12, "risk_level": 0.17 },
+    { "id": "EB01", "name": "应急备降点-西北", "type": "emergency_bay", "position": { "x": 500, "y": 500, "z": 80 }, "capacity": 2, "risk_level": 0.1 },
+    { "id": "EB02", "name": "应急备降点-东南", "type": "emergency_bay", "position": { "x": 1500, "y": 1500, "z": 80 }, "capacity": 2, "risk_level": 0.1 }
+  ],
+  "routes": [
+    { "id": "RT01", "name": "北郊走廊", "start": "WP01", "end": "WP03", "waypoint_ids": ["WP01", "WP02", "WP03"], "distance": 2000, "capacity": 20, "current_flow": 4, "risk_level": 0.2, "status": "open" },
+    { "id": "RT02", "name": "南郊走廊", "start": "WP07", "end": "WP09", "waypoint_ids": ["WP07", "WP08", "WP09"], "distance": 2000, "capacity": 20, "current_flow": 6, "risk_level": 0.22, "status": "open" },
+    { "id": "RT03", "name": "西城纵线", "start": "WP01", "end": "WP07", "waypoint_ids": ["WP01", "WP04", "WP07"], "distance": 2000, "capacity": 15, "current_flow": 5, "risk_level": 0.3, "status": "open" },
+    { "id": "RT04", "name": "东城纵线", "start": "WP03", "end": "WP09", "waypoint_ids": ["WP03", "WP06", "WP09"], "distance": 2000, "capacity": 15, "current_flow": 7, "risk_level": 0.26, "status": "open" },
+    { "id": "RT05", "name": "中部横线", "start": "WP04", "end": "WP06", "waypoint_ids": ["WP04", "WP05", "WP06"], "distance": 2000, "capacity": 10, "current_flow": 3, "risk_level": 0.4, "status": "open" },
+    { "id": "RT06", "name": "中央东线", "start": "WP02", "end": "WP08", "waypoint_ids": ["WP02", "WP05", "WP08"], "distance": 2000, "capacity": 10, "current_flow": 11, "risk_level": 0.35, "status": "congested" }
+  ],
+  "aircraft": [
+    { "id": "AC01", "name": "天枢-01", "position": { "x": 0, "y": 0, "z": 120 }, "status": "grounded", "battery": 0.92, "priority": 5 },
+    { "id": "AC02", "name": "天枢-02", "position": { "x": 2000, "y": 0, "z": 120 }, "status": "grounded", "battery": 0.78, "priority": 3 },
+    { "id": "AC03", "name": "天枢-03", "position": { "x": 1000, "y": 0, "z": 120 }, "status": "grounded", "battery": 0.65, "priority": 0 },
+    { "id": "AC04", "name": "天枢-04", "position": { "x": 0, "y": 1000, "z": 120 }, "status": "grounded", "battery": 0.88, "priority": 2 },
+    { "id": "AC05", "name": "天枢-05", "position": { "x": 1000, "y": 1000, "z": 120 }, "status": "grounded", "battery": 0.97, "priority": 8 },
+    { "id": "AC06", "name": "天枢-06", "position": { "x": 2000, "y": 1000, "z": 120 }, "status": "grounded", "battery": 0.45, "priority": 1 },
+    { "id": "AC07", "name": "天枢-07", "position": { "x": 0, "y": 2000, "z": 120 }, "status": "grounded", "battery": 0.83, "priority": 4 },
+    { "id": "AC08", "name": "天枢-08", "position": { "x": 2000, "y": 2000, "z": 120 }, "status": "grounded", "battery": 0.56, "priority": 0 }
+  ],
+  "missions": [
+    { "id": "MS01", "aircraft_id": "AC01", "origin": { "x": 0, "y": 0, "z": 120 }, "destination": { "x": 2000, "y": 2000, "z": 120 }, "priority": 5, "status": "pending" },
+    { "id": "MS02", "aircraft_id": "AC02", "origin": { "x": 2000, "y": 0, "z": 120 }, "destination": { "x": 0, "y": 2000, "z": 120 }, "priority": 3, "status": "pending" },
+    { "id": "MS03", "aircraft_id": "AC05", "origin": { "x": 1000, "y": 1000, "z": 120 }, "destination": { "x": 1000, "y": 0, "z": 120 }, "priority": 8, "status": "pending" }
+  ],
+  "weather": [
+    {
+      "id": "WX01",
+      "name": "城西常态风场",
+      "wind_speed": 7.5,
+      "wind_direction": 315,
+      "visibility_m": 7000,
+      "precipitation": "none",
+      "affected_area": {
+        "points": [
+          { "x": -200, "y": 800 },
+          { "x": 600, "y": 800 },
+          { "x": 600, "y": 1400 },
+          { "x": -200, "y": 1400 }
+        ]
+      }
+    }
+  ],
+  "restrictions": [
+    {
+      "id": "RZ01",
+      "name": "政务核心区临时管制",
+      "polygon": {
+        "points": [
+          { "x": 850, "y": 850 },
+          { "x": 1150, "y": 850 },
+          { "x": 1150, "y": 1150 },
+          { "x": 850, "y": 1150 }
+        ]
+      },
+      "min_altitude": 0,
+      "max_altitude": 300,
+      "active": true,
+      "reason": "重大活动安保，临时禁止一切无人机进入"
+    }
+  ],
+  "events": []
+}
