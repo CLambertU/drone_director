@@ -1,1 +1,11 @@
-"""冲突解脱：规则算法 MVP + 可替换 RL 接口（第五阶段实现）。"""
+"""Explainable candidate-based conflict resolution with whole-fleet verification."""
+
+from .models import (
+    ConflictResolver, Resolution, ResolutionCandidate, ResolutionEnvironment, ResolutionWeights,
+)
+from .rules import resolve_conflict
+
+__all__ = [
+    "ConflictResolver", "Resolution", "ResolutionCandidate", "ResolutionEnvironment",
+    "ResolutionWeights", "resolve_conflict",
+]

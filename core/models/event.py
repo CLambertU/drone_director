@@ -36,3 +36,8 @@ class Event(BaseModel):
 
     handled: bool = False
     """是否已被仿真引擎处理完成。"""
+
+    simulation_time: float = Field(default=0.0, ge=0.0)
+    processed_at: datetime | None = None
+    processing_ms: float = Field(default=0.0, ge=0.0)
+    result: dict[str, Any] = Field(default_factory=dict)

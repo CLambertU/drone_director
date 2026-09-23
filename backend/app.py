@@ -18,6 +18,7 @@ from uuid import uuid4
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from backend import __version__
 from backend.api.router import api_router
@@ -28,6 +29,9 @@ from backend.services.demo_service import seed_demo
 from backend.services.environment_service import EnvironmentService
 from core.repository import create_registry
 from core.models import Building, CityConfig
+from simulation.engine import Engine
+from backend.services.simulation_runner import SimulationRunner
+from backend.websocket.router import router as websocket_router
 
 logger = get_logger(__name__)
 
@@ -43,6 +47,7 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        runner = None
         try:
             if should_seed:
                 result = seed_demo(app.state.registry, app.state.environment)
@@ -55,10 +60,19 @@ def create_app(
                         [Building.model_validate(b) for b in saved["buildings"]],
                         app.state.registry,
                     )
+            app.state.engine = Engine(app.state.registry, app.state.environment, settings)
+            if not should_seed:
+                app.state.engine.restore_runtime()
+            runner = SimulationRunner(app.state.engine, app.state.registry)
+            app.state.runner = runner
+            runner.start()
             logger.info("%s 启动完成 (env=%s, http://%s:%d)",
                         settings.app_name, settings.environment, settings.host, settings.port)
             yield
         finally:
+            if runner is not None:
+                await runner.stop()
+                app.state.engine.pause()
             app.state.registry.close()
             logger.info("应用关闭")
 
@@ -98,6 +112,10 @@ def create_app(
         return response
 
     app.include_router(api_router)
+    app.include_router(websocket_router)
+    frontend_dist = Path(__file__).resolve().parents[1] / "frontend/dist"
+    if frontend_dist.is_dir():
+        app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="console")
 
     return app
 

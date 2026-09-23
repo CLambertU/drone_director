@@ -24,6 +24,9 @@ data/*.sqlite3
 # Node / frontend
 node_modules/
 frontend/dist/
+frontend/public/cesium/
+data/*-wal
+data/*-shm
 npm-debug.log*
 
 # IDE / OS

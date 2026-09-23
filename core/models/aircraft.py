@@ -42,6 +42,9 @@ class Aircraft(BaseModel):
     max_speed: float = Field(default=20.0, gt=0.0)
     """最大飞行速度，米/秒。"""
 
+    max_range_m: float = Field(default=18000.0, gt=0.0, allow_inf_nan=False)
+    """满电无故障等效航程；距离和爬升共同消耗此预算。"""
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def altitude(self) -> float:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from backend.api.deps import get_environment_service, get_registry
@@ -73,6 +73,7 @@ def validate_network(
 
 @router.post("/rebuild", summary="按当前仓储实体重建城市环境与航路网络")
 def rebuild(
+    request: Request,
     registry: RepositoryRegistry = Depends(get_registry),
     environment: EnvironmentService = Depends(get_environment_service),
 ) -> dict:
@@ -81,16 +82,28 @@ def rebuild(
             status_code=409,
             detail="尚未加载城市配置，请先 POST /api/system/seed",
         )
-    return environment.rebuild_all(registry)
+    with registry.lock:
+        engine = getattr(request.app.state, "engine", None)
+        if engine is not None and engine.running:
+            raise HTTPException(409, "请先暂停再重建网络")
+        result = environment.rebuild_all(registry)
+        if engine is not None:
+            engine.sync_entities()
+            engine.checkpoint()
+        return result
 
 
 @router.post("/generate-network", summary="根据航点、建筑和激活管制区生成安全邻接航段")
 def generate_network(
     payload: GenerateNetworkRequest,
+    request: Request,
     registry: RepositoryRegistry = Depends(get_registry),
     environment: EnvironmentService = Depends(get_environment_service),
 ) -> dict:
     with registry.lock:
+        engine = getattr(request.app.state, "engine", None)
+        if engine is not None and engine.running:
+            raise HTTPException(409, "请先暂停再生成网络")
         city = _require_city(environment)
         generated = RouteNetwork.generate_routes(
             registry.waypoints.list(), city, registry.restrictions.list(),
@@ -102,6 +115,9 @@ def generate_network(
             network = RouteNetwork.build(registry.waypoints.list(), registry.routes.list())
         environment.network = network
         environment.version += 1
+        if engine is not None:
+            engine.sync_entities()
+            engine.checkpoint()
         return {
             "generated_routes": len(generated),
             "nodes": network.graph.number_of_nodes(),

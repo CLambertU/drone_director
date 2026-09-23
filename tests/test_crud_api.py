@@ -21,7 +21,7 @@ WAYPOINT_PAYLOAD = {
 }
 
 EVENT_PAYLOAD = {
-    "type": "event_route_congestion",
+    "type": "event_info",
     "severity": "warning",
     "description": "RT06 流量超容量",
     "related_id": "RT06",
@@ -84,7 +84,7 @@ def test_create_event_with_defaults(client):
     assert resp.status_code == 201
     body = resp.json()
     assert body["id"].startswith("EV")
-    assert body["handled"] is False
+    assert body["handled"] is True
     assert body["timestamp"] is not None
 
 

@@ -48,6 +48,11 @@ class Settings(BaseSettings):
     conflict_horizontal_separation_m: float = Field(default=30.0, gt=0, allow_inf_nan=False)
     conflict_vertical_separation_m: float = Field(default=15.0, gt=0, allow_inf_nan=False)
     conflict_time_window_s: float = Field(default=10.0, gt=0, allow_inf_nan=False)
+    conflict_resolution_weight_delay: float = Field(default=1.0, ge=0, allow_inf_nan=False)
+    conflict_resolution_weight_energy: float = Field(default=1.0, ge=0, allow_inf_nan=False)
+    conflict_resolution_weight_congestion: float = Field(default=1.0, ge=0, allow_inf_nan=False)
+    conflict_altitude_step_m: float = Field(default=30.0, gt=0, allow_inf_nan=False)
+    conflict_max_vertical_speed_mps: float = Field(default=2.0, gt=0, allow_inf_nan=False)
 
     # ---------- 仿真参数（第四阶段使用） ----------
     simulation_default_speed: float = Field(default=10.0, gt=0, le=100, allow_inf_nan=False)

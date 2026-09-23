@@ -21,7 +21,8 @@ class EntityService:
 
     def _validate(self, entity: BaseModel) -> None:
         if isinstance(entity, Mission):
-            self._require_reference("aircraft", entity.aircraft_id)
+            if entity.aircraft_id is not None:
+                self._require_reference("aircraft", entity.aircraft_id)
             if entity.route_id is not None:
                 self._require_reference("routes", entity.route_id)
         elif isinstance(entity, AirRoute):

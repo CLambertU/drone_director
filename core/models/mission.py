@@ -17,7 +17,7 @@ def _utcnow() -> datetime:
 
 class Mission(BaseModel):
     id: str = Field(default_factory=lambda: new_id("MS"))
-    aircraft_id: str
+    aircraft_id: str | None = None
     """执行任务的飞行器 ID。"""
 
     origin: Position3D
@@ -32,3 +32,9 @@ class Mission(BaseModel):
     created_at: datetime = Field(default_factory=_utcnow)
     assigned_at: datetime | None = None
     completed_at: datetime | None = None
+    created_sim_time: float = Field(default=0.0, ge=0.0)
+    started_sim_time: float | None = None
+    completed_sim_time: float | None = None
+    baseline_duration_s: float | None = Field(default=None, ge=0.0)
+    distance_flown_m: float = Field(default=0.0, ge=0.0)
+    delay_s: float = Field(default=0.0, ge=0.0)

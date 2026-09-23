@@ -122,9 +122,9 @@ def plan_path(source: str, target: str, context: PlanningContext,
     constrained weighted objective. It is explicitly identified in the result.
     """
     weights = CostWeights.model_validate((weights or CostWeights()).model_dump())
-    _number(context.speed_mps, "speed_mps", positive=True)
-    if context.max_distance_m is not None:
-        _number(context.max_distance_m, "max_distance_m")
+    speed_mps = _number(context.speed_mps, "speed_mps", positive=True)
+    max_distance_m = (_number(context.max_distance_m, "max_distance_m")
+                      if context.max_distance_m is not None else None)
     if not context.graph.is_directed() or context.graph.is_multigraph():
         raise PlanningError("invalid_context", "Planning requires a directed graph without parallel edges")
     if source not in context.graph or target not in context.graph:
@@ -136,7 +136,7 @@ def plan_path(source: str, target: str, context: PlanningContext,
     snapshot = PlanningContext(
         graph=deepcopy(context.graph), city=context.city,
         restrictions=deepcopy(context.restrictions), weather=deepcopy(context.weather),
-        speed_mps=context.speed_mps, max_distance_m=context.max_distance_m,
+        speed_mps=speed_mps, max_distance_m=max_distance_m,
         respect_capacity=context.respect_capacity, blocked_edges=set(context.blocked_edges),
     )
     graph, rejected = _weighted_graph(snapshot, weights)

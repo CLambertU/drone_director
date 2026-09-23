@@ -1,1 +1,5 @@
-"""仿真主循环：固定步长 tick、虚拟时钟、暂停/加速控制（第四阶段实现）。"""
+"""Fixed-step simulation independent of HTTP and wall-clock scheduling."""
+
+from simulation.engine.runtime import Engine
+
+__all__ = ["Engine"]

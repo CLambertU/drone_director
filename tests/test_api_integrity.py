@@ -117,8 +117,9 @@ def test_internal_event_state_preserved_and_handled_event_immutable(client):
     response = client.post("/api/events", json={"type": "event_info"})
     created = response.json()
     updated = client.put(f"/api/events/{created['id']}", json={"type": "event_info", "description": "updated"})
-    assert updated.status_code == 200
-    assert updated.json()["timestamp"] == created["timestamp"]
+    assert created["handled"] is True
+    assert updated.status_code == 409
+    assert client.get(f"/api/events/{created['id']}").json()["timestamp"] == created["timestamp"]
     event = Event(id="handled", type=EventType.INFO, handled=True)
     client.app.state.registry.events.add(event)
     assert client.put("/api/events/handled", json={"type": "event_info"}).status_code == 409

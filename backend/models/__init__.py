@@ -51,7 +51,7 @@ class RouteInput(WriteInput):
 
 
 class MissionInput(WriteInput):
-    aircraft_id: str = Field(min_length=1)
+    aircraft_id: str | None = Field(default=None, min_length=1)
     origin: Position3D
     destination: Position3D
     priority: int = Field(default=0, ge=0, le=10)
@@ -80,6 +80,8 @@ INPUT_MODELS = {
 
 PROTECTED_FIELDS = {
     "routes": {"current_flow"},
-    "missions": {"created_at", "assigned_at", "completed_at"},
-    "events": {"timestamp", "handled"},
+    "missions": {"created_at", "assigned_at", "completed_at", "created_sim_time",
+                 "started_sim_time", "completed_sim_time", "baseline_duration_s",
+                 "distance_flown_m", "delay_s"},
+    "events": {"timestamp", "handled", "simulation_time", "processed_at", "processing_ms", "result"},
 }
