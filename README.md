@@ -7,7 +7,7 @@
 需要 Windows PowerShell、Python 3.12+、uv 和 Node.js 22.12+。在仓库根目录执行：
 
 ~~~powershell
-.\scripts\setup.ps1
+.\scripts\setup.ps
 .\scripts\run_demo.ps1
 ~~~
 
