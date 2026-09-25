@@ -17,6 +17,8 @@ class FlightPlan:
     emergency_bay: str | None = None
     route_ids: list[str | None] = field(default_factory=list)
     vertical_speed_mps: float = 2.0
+    egress_target: Position3D | None = None
+    egress_only: bool = False
 
     @property
     def complete(self) -> bool:
@@ -127,8 +129,10 @@ class FlightPlan:
         return points
 
     def to_dict(self) -> dict:
-        return {**self.__dict__, "positions": [p.model_dump() for p in self.positions]}
+        return {**self.__dict__, "positions": [p.model_dump() for p in self.positions],
+                "egress_target": self.egress_target.model_dump() if self.egress_target else None}
 
     @classmethod
     def from_dict(cls, data: dict) -> "FlightPlan":
-        return cls(**{**data, "positions": [Position3D.model_validate(p) for p in data["positions"]]})
+        return cls(**{**data, "positions": [Position3D.model_validate(p) for p in data["positions"]],
+                      "egress_target": Position3D.model_validate(data["egress_target"]) if data.get("egress_target") else None})

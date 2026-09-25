@@ -1,6 +1,8 @@
 """Simulation commands; every returned number comes from the engine snapshot."""
 
 from fastapi import APIRouter, Depends, Request
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.exceptions import AppError
@@ -16,6 +18,7 @@ class DemoRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     aircraft_count: int = Field(default=100, ge=2, le=500)
     seed: int = Field(default=42, ge=0)
+    scenario: Literal["full", "congestion", "weather", "closure", "failure", "conflict"] = "full"
 
 
 class SpeedRequest(BaseModel):

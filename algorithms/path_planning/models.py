@@ -34,6 +34,9 @@ class PlanningContext:
     max_distance_m: float | None = None
     respect_capacity: bool = True
     blocked_edges: set[tuple[str, str]] = field(default_factory=set)
+    # Engine-only: caller owns the graph and holds its state lock during planning.
+    owned_snapshot: bool = False
+    segment_cache: dict[tuple, tuple[str | None, float]] | None = None
 
 
 class PlanningResult(BaseModel):

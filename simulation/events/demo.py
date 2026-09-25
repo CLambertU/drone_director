@@ -9,9 +9,15 @@ from simulation.aircraft.flight import FlightPlan
 from simulation.environment.builder import rectangle_polygon
 
 
-def prepare_demo(engine, aircraft_count=100, seed=42):
+SCENARIOS = {"full", "congestion", "weather", "closure", "failure", "conflict"}
+TRIGGER_TIME = {"congestion": 10, "weather": 25, "closure": 25, "failure": 40, "conflict": 40}
+
+
+def prepare_demo(engine, aircraft_count=100, seed=42, scenario="full"):
     if not 2 <= aircraft_count <= 500:
         raise ValueError("演示飞行器数量须为 2 至 500")
+    if scenario not in SCENARIOS:
+        raise ValueError(f"未知演示场景：{scenario}")
     if engine.running:
         raise RuntimeError("请先暂停再生成演示场景")
     rng = random.Random(seed)
@@ -70,34 +76,25 @@ def prepare_demo(engine, aircraft_count=100, seed=42):
     engine.environment.install_from(staged)
     engine.reset_runtime()
     engine.demo_enabled=True
+    engine.demo_scenario=scenario
     engine._schedule()
-    engine._record(Event(type=EventType.INFO,description=f"随机种子 {seed}：已生成 {aircraft_count} 架飞行器及任务",
-                         result={"seed":seed,"aircraft_count":aircraft_count}))
+    engine._record(Event(type=EventType.INFO,description=f"随机种子 {seed}：已生成 {aircraft_count} 架飞行器及任务，场景 {scenario}",
+                         result={"seed":seed,"aircraft_count":aircraft_count,"scenario":scenario}))
 
 
 def advance_demo(engine):
     if not engine.demo_enabled:
         return
+    if engine.demo_scenario != "full":
+        return _advance_single(engine)
     if engine.demo_stage==0 and engine.time_s>=20:
-        route=max(engine.routes.values(),key=lambda r:(engine.occupancy.get(r.id,0),r.id))
-        engine.inject_event(Event(type=EventType.ROUTE_CONGESTION,related_id=route.id,severity=Severity.WARNING,
-            description="演示事件 1：航路容量下降，重新分配流量",payload={"capacity":1}))
+        _inject_congestion(engine)
         engine.demo_stage=1
     elif engine.demo_stage==1 and engine.time_s>=45:
-        cfg=engine.environment.city.config
-        area=rectangle_polygon(2900,cfg.height*0.55,450,min(700,cfg.height*0.3))
-        weather_event=engine.inject_event(Event(type=EventType.WEATHER,severity=Severity.CRITICAL,
-            description="演示事件 2：东部雷暴，动态更新禁入区域并重规划",
-            payload={"affected_area":area.model_dump(),"wind_speed":22,"visibility_m":1200,"precipitation":"thunderstorm"}))
-        engine.demo_weather_id=weather_event.result["weather_id"]
+        _inject_weather(engine)
         engine.demo_stage=2
     elif engine.demo_stage==2 and engine.time_s>=70:
-        available=[a for a in engine.aircraft.values() if a.id in engine.plans and not engine.plans[a.id].complete]
-        if available:
-            bays=[w for w in engine.waypoints.values() if w.type==WaypointType.EMERGENCY_BAY]
-            victim=min(available,key=lambda a:min(a.position.distance_to(b.position) for b in bays))
-            engine.inject_event(Event(type=EventType.AIRCRAFT_FAILURE,related_id=victim.id,severity=Severity.EMERGENCY,
-                description="演示事件 3：动力故障，搜索可达备降点",payload={"range_derating":0.55}))
+        _inject_failure(engine)
         engine.demo_stage=3
     elif engine.demo_stage==3 and engine.time_s>=95:
         _crossing_intents(engine)
@@ -144,6 +141,80 @@ def advance_demo(engine):
             return False
 
 
+def _advance_single(engine):
+    if engine.demo_complete:
+        return
+    scenario = engine.demo_scenario
+    trigger = TRIGGER_TIME[scenario]
+    if engine.demo_stage == 0 and engine.time_s >= trigger:
+        if scenario == "congestion":
+            _inject_congestion(engine)
+        elif scenario == "weather":
+            _inject_weather(engine, center_x=2500)
+        elif scenario == "closure":
+            _inject_closure(engine)
+        elif scenario == "failure":
+            _inject_failure(engine)
+        else:
+            _crossing_intents(engine)
+        engine.demo_stage = 1
+    if engine.demo_stage != 1:
+        return
+    observed = (scenario == "failure" and any(e.type == EventType.EMERGENCY_LANDING for e in engine.events)
+                or scenario == "conflict" and engine.resolved_conflicts > 0)
+    ready = engine.time_s >= trigger + 12 and observed
+    if scenario in ("congestion", "weather", "closure"):
+        ready = engine.time_s >= trigger + 55
+    if ready or engine.time_s >= 180:
+        engine.demo_complete = True
+        engine.running = False
+        engine._record(Event(type=EventType.INFO, description=f"单项场景 {scenario} 已停止；结果来自实际仿真",
+            result={"scenario": scenario, "observed": bool(observed or scenario in ("congestion", "weather", "closure")),
+                    "resolved_conflicts": engine.resolved_conflicts,
+                    "emergency_landings": sum(e.type == EventType.EMERGENCY_LANDING for e in engine.events)}))
+        engine.checkpoint()
+        return False
+
+
+def _inject_congestion(engine):
+    route = max(engine.routes.values(), key=lambda r: (engine.occupancy.get(r.id, 0), r.id))
+    return engine.inject_event(Event(type=EventType.ROUTE_CONGESTION, related_id=route.id,
+        severity=Severity.WARNING, description="演示事件：航路容量下降，重新分配流量",
+        payload={"capacity": 1}))
+
+
+def _inject_weather(engine, center_x=2900):
+    cfg = engine.environment.city.config
+    area = rectangle_polygon(center_x, cfg.height*0.55, 450, min(700, cfg.height*0.3))
+    event = engine.inject_event(Event(type=EventType.WEATHER, severity=Severity.CRITICAL,
+        description="演示事件：东部雷暴，动态更新禁入区域并重规划",
+        payload={"affected_area":area.model_dump(), "wind_speed":22,
+                 "visibility_m":1200, "precipitation":"thunderstorm"}))
+    engine.demo_weather_id = event.result["weather_id"]
+    return event
+
+
+def _inject_closure(engine):
+    cfg = engine.environment.city.config
+    area = rectangle_polygon(2500, cfg.height*0.55, 450, min(700, cfg.height*0.3))
+    return engine.inject_event(Event(type=EventType.AIRSPACE_CLOSURE, severity=Severity.WARNING,
+        description="演示事件：城市东部临时空域管制",
+        payload={"polygon":area.model_dump(), "min_altitude":120,
+                 "max_altitude":230, "reason":"临时空域管制演示"}))
+
+
+def _inject_failure(engine):
+    available=[a for a in engine.aircraft.values() if a.id in engine.plans and not engine.plans[a.id].complete]
+    if not available:
+        engine.alert("demo", "当前没有可注入故障的飞行器")
+        return None
+    bays=[w for w in engine.waypoints.values() if w.type==WaypointType.EMERGENCY_BAY]
+    victim=min(available,key=lambda a:min(a.position.distance_to(b.position) for b in bays))
+    return engine.inject_event(Event(type=EventType.AIRCRAFT_FAILURE,related_id=victim.id,
+        severity=Severity.EMERGENCY, description="演示事件：动力故障，搜索可达备降点",
+        payload={"range_derating":0.55}))
+
+
 def _crossing_intents(engine):
     """Change two flight intents through a shared point, without moving aircraft positions."""
     from simulation.engine.safety import feasible
@@ -165,5 +236,6 @@ def _crossing_intents(engine):
             engine.plans[a_id],engine.plans[b_id]=pa,pb
             engine._record(Event(type=EventType.INFO,description="演示事件 4：两机任务意图出现交汇，交由预测检测与解脱",
                 result={"aircraft_a":a_id,"aircraft_b":b_id,"meeting_point":meeting.model_dump()}))
-            return
+            return True
     engine.alert("demo", "当前场景没有可安全构造交汇意图的两架飞机；未伪造冲突结果")
+    return False

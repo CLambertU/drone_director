@@ -1,0 +1,44 @@
+{
+  "school": "中国民用航空飞行学院",
+  "team": "微笑^^调查队",
+  "presenter": "陈奕冰",
+  "source_file_count": 150,
+  "source_encryption": "AES-256 ZIP",
+  "files": [
+    {
+      "name": "中国民用航空飞行学院+微笑^^调查队_交付说明.txt",
+      "bytes": 926,
+      "sha256": "f1fea5cffb5b0a713b0536b2a6d5c126b9f52846d63fb86800e33ddbcaf06d40"
+    },
+    {
+      "name": "中国民用航空飞行学院+微笑^^调查队_仿真参数说明.pdf",
+      "bytes": 224777,
+      "sha256": "2527a649fccde25da47b24760fe60187f0469336f8e55c61ce8ec65ddcf6c8d8"
+    },
+    {
+      "name": "中国民用航空飞行学院+微笑^^调查队_仿真工程文件.zip",
+      "bytes": 254393,
+      "sha256": "3b14563d7a0f1569bbdbecdd8ddd0ba30f67d5be0d0254b0cfa66d815edbc18f"
+    },
+    {
+      "name": "中国民用航空飞行学院+微笑^^调查队_城市空中交通规划创新方案.pdf",
+      "bytes": 433304,
+      "sha256": "2d6772858d7015b1dcad70f323e791b0f13ca0503cbb437d616e9b173d11e2e3"
+    },
+    {
+      "name": "中国民用航空飞行学院+微笑^^调查队_完整源代码_加密.zip",
+      "bytes": 269061,
+      "sha256": "596f5a52544773b8f3794e3e043f3cb67bea80c27a3f78120cf14c504f68eda9"
+    },
+    {
+      "name": "中国民用航空飞行学院+微笑^^调查队_现场答辩定稿.pptx",
+      "bytes": 100708,
+      "sha256": "db04bef2aba5799542e3c341e5cf8411be5805a089255a6c31729c20672b9772"
+    },
+    {
+      "name": "中国民用航空飞行学院+微笑^^调查队_现场讲稿与专家问答.pdf",
+      "bytes": 255631,
+      "sha256": "cfff09dcbb36c2861e0d200d4ea3bcde524aef72b97eaec53a68749577ae5e14"
+    }
+  ]
+}

@@ -56,11 +56,11 @@ export function stopConnection() {
 }
 
 export async function command(path: string, body: unknown = {}) {
-  if (connection.busy) return;
+  if (connection.busy) return false;
   connection.busy = true;
   connection.error = '';
-  try { await api(path, body); await refresh(); }
-  catch (error) { connection.error = error instanceof Error ? error.message : String(error); }
+  try { await api(path, body); await refresh(); return true; }
+  catch (error) { connection.error = error instanceof Error ? error.message : String(error); return false; }
   finally { connection.busy = false; }
 }
 

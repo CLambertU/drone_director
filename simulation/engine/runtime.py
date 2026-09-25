@@ -9,7 +9,7 @@ from algorithms.path_planning import CostWeights, PlanningError
 from core.models import AircraftStatus, Event, EventType, MissionStatus, Severity
 from simulation.aircraft.flight import FlightPlan
 from simulation.engine.metrics import collect_metrics
-from simulation.engine.planning import CachedCollisionEnvironment, plan_flight
+from simulation.engine.planning import CachedCollisionEnvironment, _inside_hazard, plan_flight
 
 
 class Engine:
@@ -40,6 +40,7 @@ class Engine:
             self.demo_stage = 0
             self.demo_enabled = False
             self.demo_complete = False
+            self.demo_scenario = "full"
             self.demo_weather_id = None
             self._last_alert: dict[str, float] = {}
             self._last_retry = -10.0
@@ -68,15 +69,19 @@ class Engine:
                     or old_constraints != (self.weather, self.restrictions)):
                 self.plans.clear()
             self.collision_city = CachedCollisionEnvironment(self.environment.city) if self.environment.city else None
+            self._segment_cache = {}
+            self._segment_cache_version = self.environment.version
             self._environment_version = self.environment.version
             self._measure_occupancy()
 
     def start(self):
+        from simulation.engine.safety import manage_conflicts
+
         with self.registry.lock:
             if self.environment.city is None or self.environment.network is None:
                 raise RuntimeError("请先加载城市与航路网络")
             self._schedule()
-            self.running = True
+            self.running = manage_conflicts(self)
             self.version += 1
 
     def pause(self):
@@ -128,6 +133,7 @@ class Engine:
                     actual_trajectories[aircraft.id] = [(0, aircraft.position), (self.tick_seconds, aircraft.position)]
                 continue
             trace = []
+            previous_route = plan.current_route
             travelled, _ = plan.advance(aircraft, self.tick_seconds,
                                        lambda cursor: self._can_enter(aircraft.id, plan, cursor), trace)
             actual_trajectories[aircraft.id] = trace
@@ -141,6 +147,10 @@ class Engine:
             if plan.complete:
                 aircraft.speed = 0.0
                 aircraft.status = AircraftStatus.LANDED if aircraft.position.z < 1 else AircraftStatus.HOVERING
+                if plan.egress_only:
+                    self.alert(aircraft.id, "已撤离禁入区域，在安全出口等待后续航路")
+                    self._measure_occupancy()
+                    continue
                 if mission:
                     mission.status = MissionStatus.DIVERTED if plan.emergency_bay else MissionStatus.COMPLETED
                     mission.completed_sim_time = self.time_s + self.tick_seconds
@@ -158,7 +168,8 @@ class Engine:
                 aircraft.status = AircraftStatus.EMERGENCY if plan.emergency_bay else AircraftStatus.HOVERING
             else:
                 aircraft.status = AircraftStatus.DIVERTING if plan.emergency_bay else AircraftStatus.EN_ROUTE
-            self._measure_occupancy()
+            if (None if plan.complete else plan.current_route) != previous_route:
+                self._measure_occupancy()
         from algorithms.conflict_detection import ConflictThresholds, TrajectoryPoint, detect_conflicts
         realized = detect_conflicts({key:[TrajectoryPoint(time=self.time_s+t, position=p) for t,p in points]
                                     for key,points in actual_trajectories.items()},
@@ -255,13 +266,16 @@ class Engine:
         aircraft = self.aircraft[aircraft_id]
         target = destination or aircraft.destination
         if target is None:
-            return False
+            if not _inside_hazard(self, aircraft.position):
+                return False
+            target = aircraft.position
         try:
             plan = plan_flight(self, aircraft, target,
                                max_distance=remaining_range if remaining_range is not None else aircraft.battery * aircraft.max_range_m,
                                emergency_bay=emergency_bay)
             self.plans[aircraft_id] = plan
-            aircraft.destination = target
+            if destination is not None or aircraft.destination is not None:
+                aircraft.destination = target
             aircraft.status = AircraftStatus.DIVERTING if emergency_bay else AircraftStatus.EN_ROUTE
             self._measure_occupancy()
             return True
@@ -302,10 +316,10 @@ class Engine:
             self.checkpoint()
             return result
 
-    def prepare_demo(self, aircraft_count=100, seed=42):
+    def prepare_demo(self, aircraft_count=100, seed=42, scenario="full"):
         from simulation.events.demo import prepare_demo
         with self.registry.lock:
-            prepare_demo(self, aircraft_count, seed)
+            prepare_demo(self, aircraft_count, seed, scenario)
             self.checkpoint()
 
     def snapshot(self, include_environment=True):
@@ -314,15 +328,16 @@ class Engine:
             for item in self.aircraft.values():
                 plan = self.plans.get(item.id)
                 mission = self._mission_for(item.id)
-                aircraft.append({**item.model_dump(mode="json"), "trajectory": list(self.trails.get(item.id, [])),
+                aircraft.append({**item.model_dump(mode="json"), "trajectory": list(self.trails.get(item.id, []))[-90:],
                                  "flight_plan": [item.position.model_dump(), *[p.model_dump() for p in plan.positions[plan.cursor:]]] if plan else [],
                                  "mission_id": mission.id if mission else None,
                                  "remaining_distance_m": plan.remaining_distance(item.position) if plan else 0,
                                  "delay_s": mission.delay_s if mission else 0})
             data = {"version": self.version, "environment_version": self.environment.version,
                     "simulation": {"time_s": self.time_s, "running": self.running, "speed": self.speed,
-                                   "tick_seconds": self.tick_seconds, "demo_stage": self.demo_stage,
-                                   "demo_complete": self.demo_complete},
+                    "tick_seconds": self.tick_seconds, "demo_stage": self.demo_stage,
+                                   "demo_complete": self.demo_complete,
+                                   "demo_scenario": self.demo_scenario},
                     "aircraft": aircraft, "metrics": collect_metrics(self), "history": list(self.history),
                     "conflicts": [c.model_dump(mode="json") for c in self.conflicts],
                     "events": [e.model_dump(mode="json") for e in self.events[-100:]]}
@@ -357,7 +372,8 @@ class Engine:
                 "distances": self.distances, "trails": {key: list(value) for key, value in self.trails.items()},
                 "history": list(self.history), "bay_reservations": self.bay_reservations,
                 "demo_stage": self.demo_stage, "demo_enabled": self.demo_enabled,
-                "demo_complete": self.demo_complete, "resolved_conflicts": self.resolved_conflicts,
+                "demo_complete": self.demo_complete, "demo_scenario": self.demo_scenario,
+                "resolved_conflicts": self.resolved_conflicts,
                 "demo_weather_id": self.demo_weather_id,
                 "alert_count": self.alert_count,
                 "emergency_response_total_ms": self.emergency_response_total_ms,
@@ -375,6 +391,7 @@ class Engine:
             for key in ("demo_weather_id", "alert_count", "emergency_response_total_ms", "emergency_response_count"):
                 if key in data:
                     setattr(self, key, data[key])
+            self.demo_scenario = data.get("demo_scenario", "full")
             if "alert_count" not in data:
                 self.alert_count = sum(e.severity != Severity.INFO for e in self.events)
             if "emergency_response_count" not in data:

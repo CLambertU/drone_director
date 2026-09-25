@@ -88,7 +88,15 @@ def _weighted_graph(context: PlanningContext, weights: CostWeights):
             rejected["capacity"] += 1
             continue
         start, end = graph.nodes[source]["position"], graph.nodes[target]["position"]
-        constraint = _constraint(start, end, context)
+        cache = context.segment_cache
+        key = (start.x, start.y, start.z, end.x, end.y, end.z, context.speed_mps)
+        exposure = cache.get(key) if cache is not None else None
+        if exposure is None:
+            constraint = _constraint(start, end, context)
+            exposure = (constraint, _weather_penalty(start, end, context) if constraint is None else 0.0)
+            if cache is not None:
+                cache[key] = exposure
+        constraint, weather_penalty = exposure
         if constraint is not None:
             rejected[constraint] += 1
             continue
@@ -105,7 +113,7 @@ def _weighted_graph(context: PlanningContext, weights: CostWeights):
             "risk": distance_km * risk * weights.risk,
             "congestion": distance_km * utilization * weights.congestion,
             "energy": (distance_km + 4.0 * climb_km) * weights.energy,
-            "weather": distance_km * _weather_penalty(start, end, context) * weights.weather,
+            "weather": distance_km * weather_penalty * weights.weather,
         }
         total = sum(terms.values())
         if not math.isfinite(total):
@@ -134,10 +142,12 @@ def plan_path(source: str, target: str, context: PlanningContext,
     # Parent state manager supplies the snapshot under its lock. Copy mutable graph
     # attributes/observations so later cost evaluation cannot change the search.
     snapshot = PlanningContext(
-        graph=deepcopy(context.graph), city=context.city,
-        restrictions=deepcopy(context.restrictions), weather=deepcopy(context.weather),
+        graph=context.graph if context.owned_snapshot else deepcopy(context.graph), city=context.city,
+        restrictions=list(context.restrictions) if context.owned_snapshot else deepcopy(context.restrictions),
+        weather=list(context.weather) if context.owned_snapshot else deepcopy(context.weather),
         speed_mps=speed_mps, max_distance_m=max_distance_m,
         respect_capacity=context.respect_capacity, blocked_edges=set(context.blocked_edges),
+        segment_cache=context.segment_cache if context.owned_snapshot else None,
     )
     graph, rejected = _weighted_graph(snapshot, weights)
     for endpoint in (source, target):

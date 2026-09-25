@@ -43,15 +43,20 @@ def forecast_plan(engine, aircraft_id, plan, limits):
 def feasible(engine, aircraft, plan):
     points = [aircraft.position, *plan.positions[plan.cursor:]]
     energy = 0.0
-    for a, b in zip(points, points[1:]):
+    for index, (a, b) in enumerate(zip(points, points[1:])):
         energy += a.distance_to(b) + 4 * max(0.0, b.z-a.z)
         if not 0 <= b.z <= 300 or not engine.collision_city.is_segment_clear(a, b):
             return False
+        egress = index == 0 and plan.egress_target == b
         if any(r.active and r.polygon.intersects_prism(a, b, r.min_altitude, r.max_altitude)
+               and not (egress and r.polygon.intersects_prism(a, a, r.min_altitude, r.max_altitude)
+                        and not r.polygon.intersects_prism(b, b, r.min_altitude, r.max_altitude))
                for r in engine.restrictions.values()):
             return False
         if any(w.precipitation == PrecipitationType.THUNDERSTORM and
-               w.affected_area.intersects_segment(a.xy, b.xy) for w in engine.weather.values()):
+               w.affected_area.intersects_segment(a.xy, b.xy) and
+               not (egress and w.affected_area.contains(a.xy) and not w.affected_area.contains(b.xy))
+               for w in engine.weather.values()):
             return False
     return energy <= aircraft.battery * aircraft.max_range_m + 1e-6
 

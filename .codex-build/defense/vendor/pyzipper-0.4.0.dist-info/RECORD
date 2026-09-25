@@ -1,0 +1,17 @@
+pyzipper-0.4.0.dist-info/INSTALLER,sha256=zuuue4knoyJ-UwPPXg8fezS7VCrXJQrAP7zeNuwvFQg,4
+pyzipper-0.4.0.dist-info/METADATA,sha256=L5xagXS203DcOZHAkzM8vqOyQV9w7K9XdF96jdcO3X8,5994
+pyzipper-0.4.0.dist-info/RECORD,,
+pyzipper-0.4.0.dist-info/REQUESTED,sha256=47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU,0
+pyzipper-0.4.0.dist-info/WHEEL,sha256=aeYiig01lYGDzBgS8HxWXOg3uV61G9ijOsup-k9o1sk,91
+pyzipper-0.4.0.dist-info/licenses/AUTHORS.rst,sha256=pE0YpkduIHm6orKMPLHNlXeUY7-XQ0Rx6VZsx8i6bWg,178
+pyzipper-0.4.0.dist-info/licenses/LICENSE,sha256=phsQQz0zd44f6RhJKZGqQRHCqw9zcK3rCDxOB5lBM40,1071
+pyzipper-0.4.0.dist-info/licenses/LICENSE.python,sha256=v_kUfp4m_ucgG8qM1GFHcTxPXhCnO4evFgpDsRj2Lc4,14258
+pyzipper-0.4.0.dist-info/top_level.txt,sha256=SJJhAzURbQazyW4xmBbhhkL4NOlvxI1YARXfFwzj1fE,9
+pyzipper/__init__.py,sha256=qNvQFHW8GNjJ9bOXJMbirWKj0Nnkvpl2nG-eUTuUqpw,152
+pyzipper/__pycache__/__init__.cpython-312.pyc,,
+pyzipper/__pycache__/__version__.cpython-312.pyc,,
+pyzipper/__pycache__/zipfile.cpython-312.pyc,,
+pyzipper/__pycache__/zipfile_aes.cpython-312.pyc,,
+pyzipper/__version__.py,sha256=Hz9hqlnehve1l3B0uhkko4gq3haSC1MwFHMRBO6BJhE,63
+pyzipper/zipfile.py,sha256=GWlWKuGrjow0aV8GdSHEiZXehQA6WcZ_BgUsi0GU4Tk,95643
+pyzipper/zipfile_aes.py,sha256=GbsoDelXSNJhbyJaaC-e2o0NRTnlPd-773vcs71HLYo,14724

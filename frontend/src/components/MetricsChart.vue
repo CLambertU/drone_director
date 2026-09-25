@@ -14,7 +14,7 @@ let observer: ResizeObserver | undefined;
 function update() {
   const points = props.history.slice(-240);
   chart?.setOption({
-    animation: false, color: ['#ffba66', '#53dcca', '#829cef'],
+    animation: false, color: ['#ffba66', '#53dcca'],
     tooltip: { trigger: 'axis', backgroundColor: '#142536', borderColor: '#344758', textStyle: { color: '#e3edf3' } },
     legend: { top: 0, right: 10, itemWidth: 12, itemHeight: 5, textStyle: { color: '#91a8b8', fontSize: 10 } },
     grid: { top: 36, left: 38, right: 36, bottom: 27 },
@@ -26,7 +26,6 @@ function update() {
     series: [
       { name: '冲突 / 次', type: 'line', showSymbol: false, step: 'end', data: points.map(p => p.conflicts), lineStyle: { width: 1.8 } },
       { name: '利用率 / %', type: 'line', yAxisIndex: 1, showSymbol: false, data: points.map(p => +(p.route_utilization * 100).toFixed(1)), lineStyle: { width: 1.8 } },
-      { name: '延误 / s', type: 'line', showSymbol: false, data: points.map(p => +p.average_delay_s.toFixed(1)), lineStyle: { width: 1.5, type: 'dotted' } },
     ],
   });
 }
@@ -35,4 +34,4 @@ watch(() => props.history, update);
 onBeforeUnmount(() => { observer?.disconnect(); chart?.dispose(); });
 </script>
 
-<template><div ref="container" class="metrics-chart" role="img" aria-label="仿真历史：冲突数量、航路利用率及平均延误趋势" /></template>
+<template><div ref="container" class="metrics-chart" role="img" aria-label="仿真历史：预测冲突数量与航路利用率趋势" /></template>

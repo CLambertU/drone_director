@@ -12,9 +12,19 @@ let viewer: C.Viewer | undefined;
 let handler: C.ScreenSpaceEventHandler | undefined;
 let transform = C.Matrix4.IDENTITY;
 let sceneVersion = '';
+let sceneRevision = 0;
 let previousEnvironment: Environment | undefined;
 const staticIds = new Set<string>();
+const topologyIds = new Set<string>();
 const dynamicIds = new Set<string>();
+const routeColors = new Map<string, string>();
+let topologyKey = '';
+let lastTrackFrame = -1;
+let lastTrackVersion = -1;
+let lastTrackSelection = '';
+let lastShowTracks = true;
+let followedId = '';
+let followedPosition: Position | undefined;
 const palette = { teal: C.Color.fromCssColorString('#53dcca'), amber: C.Color.fromCssColorString('#ffba66'), red: C.Color.fromCssColorString('#ff6d78') };
 
 function world(position: Position) { return C.Matrix4.multiplyByPoint(transform, new C.Cartesian3(position.x, position.y, position.z), new C.Cartesian3()); }
@@ -51,6 +61,7 @@ function drawStatic() {
   const key = JSON.stringify([env.origin, env.bounds, env.buildings]);
   if (key === sceneVersion) return;
   sceneVersion = key;
+  sceneRevision += 1;
   staticIds.forEach(id => viewer?.entities.removeById(id));
   staticIds.clear();
   const origin = C.Cartesian3.fromDegrees(env.origin.longitude, env.origin.latitude, env.origin.altitude);
@@ -66,15 +77,54 @@ function drawStatic() {
     perPositionHeight: true, extrudedHeight: env.origin.altitude + building.elevation + building.height,
     material: C.Color.fromCssColorString('#344958'), outline: true, outlineColor: C.Color.fromCssColorString('#4a6371'),
   } }, staticIds));
+  followedPosition = undefined;
   resetCamera();
+}
+
+function drawTopology(state: Snapshot) {
+  if (!viewer) return false;
+  const key = `${state.environment_version}:${sceneRevision}:${props.showLabels}`;
+  const colorFor = (route: Snapshot['routes'][number]): keyof typeof palette => route.status === 'closed' ? 'red'
+    : route.status === 'congested' || route.current_flow >= route.capacity ? 'amber' : 'teal';
+  if (key === topologyKey) {
+    state.routes.forEach(route => {
+      const color = colorFor(route);
+      if (routeColors.get(route.id) === color) return;
+      const entity = viewer?.entities.getById(`route-${route.id}`);
+      if (entity?.polyline) entity.polyline.material = new C.ColorMaterialProperty(palette[color].withAlpha(0.52));
+      routeColors.set(route.id, color);
+    });
+    return false;
+  }
+  topologyIds.forEach(id => viewer?.entities.removeById(id));
+  topologyIds.clear(); routeColors.clear();
+  topologyKey = key;
+  const waypoints = new Map(state.waypoints.map(w => [w.id, w]));
+  state.routes.forEach(route => {
+    const positions = (route.waypoint_ids?.length ? route.waypoint_ids : [route.start, route.end]).map(id => waypoints.get(id)?.position).filter((p): p is Position => !!p);
+    if (positions.length < 2) return;
+    const color = colorFor(route);
+    routeColors.set(route.id, color);
+    upsert(`route-${route.id}`, { polyline: { positions: positions.map(world), width: 2, material: palette[color].withAlpha(0.52) } }, topologyIds);
+  });
+  state.waypoints.forEach(point => {
+    const bay = point.type === 'emergency_bay';
+    const special = bay || point.type === 'vertiport';
+    upsert(`waypoint-${point.id}`, { position: world(point.position),
+      point: { pixelSize: special ? 10 : 5, color: bay ? palette.amber : palette.teal, outlineColor: C.Color.BLACK, outlineWidth: 2 },
+      label: { text: point.name || point.id, show: props.showLabels && special, font: '12px sans-serif', fillColor: C.Color.fromCssColorString('#bfd2df'), pixelOffset: new C.Cartesian2(0, 16), style: C.LabelStyle.FILL_AND_OUTLINE, outlineWidth: 3, outlineColor: C.Color.fromCssColorString('#101c2a'), distanceDisplayCondition: new C.DistanceDisplayCondition(0, 15000) },
+    }, topologyIds);
+  });
+  return true;
 }
 
 function draw() {
   if (!viewer) return;
   if (!props.state?.environment) {
     if (previousEnvironment) {
-      viewer.entities.removeAll(); staticIds.clear(); dynamicIds.clear();
-      previousEnvironment = undefined; sceneVersion = '';
+      viewer.entities.removeAll(); staticIds.clear(); topologyIds.clear(); dynamicIds.clear(); routeColors.clear();
+      previousEnvironment = undefined; sceneVersion = ''; topologyKey = '';
+      followedId = ''; followedPosition = undefined;
       viewer.scene.requestRender();
     }
     return;
@@ -83,22 +133,13 @@ function draw() {
   try {
     drawStatic();
     const state = props.state;
+    const topologyChanged = drawTopology(state);
+    const trackFrame = Math.floor(state.simulation.time_s / 5);
+    const updateTracks = topologyChanged || trackFrame !== lastTrackFrame || props.selectedId !== lastTrackSelection
+      || props.showTracks !== lastShowTracks || (!state.simulation.running && state.version !== lastTrackVersion);
+    lastTrackFrame = trackFrame; lastTrackVersion = state.version;
+    lastTrackSelection = props.selectedId; lastShowTracks = props.showTracks;
     const used = new Set<string>();
-    const waypoints = new Map(state.waypoints.map(w => [w.id, w]));
-    state.routes.forEach(route => {
-      const positions = (route.waypoint_ids?.length ? route.waypoint_ids : [route.start, route.end]).map(id => waypoints.get(id)?.position).filter((p): p is Position => !!p);
-      if (positions.length < 2) return;
-      const color = route.status === 'closed' ? palette.red : route.status === 'congested' || route.current_flow >= route.capacity ? palette.amber : palette.teal;
-      upsert(`route-${route.id}`, { polyline: { positions: positions.map(world), width: 2, material: color.withAlpha(0.52) } }, used);
-    });
-    state.waypoints.forEach(point => {
-      const bay = point.type === 'emergency_bay';
-      const special = bay || point.type === 'vertiport';
-      upsert(`waypoint-${point.id}`, { position: world(point.position),
-        point: { pixelSize: special ? 10 : 5, color: bay ? palette.amber : palette.teal, outlineColor: C.Color.BLACK, outlineWidth: 2 },
-        label: { text: point.name || point.id, show: props.showLabels && special, font: '12px sans-serif', fillColor: C.Color.fromCssColorString('#bfd2df'), pixelOffset: new C.Cartesian2(0, 16), style: C.LabelStyle.FILL_AND_OUTLINE, outlineWidth: 3, outlineColor: C.Color.fromCssColorString('#101c2a'), distanceDisplayCondition: new C.DistanceDisplayCondition(0, 15000) },
-      }, used);
-    });
     state.aircraft.forEach(aircraft => {
       const selected = aircraft.id === props.selectedId;
       const emergency = ['emergency', 'diverting', 'fault'].includes(aircraft.status);
@@ -108,8 +149,12 @@ function draw() {
         label: { text: `${aircraft.id}  ${aircraft.position.z.toFixed(0)} m`, show: selected, font: '13px monospace', fillColor: C.Color.WHITE, showBackground: true, backgroundColor: C.Color.fromCssColorString('#12283de6'), pixelOffset: new C.Cartesian2(0, -24), disableDepthTestDistance: Number.POSITIVE_INFINITY },
       }, used);
       const trail = aircraft.trajectory?.slice(-120) || [];
-      if (props.showTracks && trail.length > 1) upsert(`track-${aircraft.id}`, { polyline: { positions: trail.map(world), width: selected ? 2 : 1, material: color.withAlpha(selected ? 0.9 : 0.25) } }, used);
-      if (selected && aircraft.flight_plan && aircraft.flight_plan.length > 1) upsert(`plan-${aircraft.id}`, { polyline: { positions: aircraft.flight_plan.map(world), width: 3, material: new C.PolylineDashMaterialProperty({ color: C.Color.WHITE.withAlpha(0.8) }) } }, used);
+      if (props.showTracks && trail.length > 1) {
+        const id = `track-${aircraft.id}`;
+        if (updateTracks || !viewer?.entities.getById(id)) upsert(id, { polyline: { positions: trail.map(world), width: selected ? 2 : 1, material: color.withAlpha(selected ? 0.9 : 0.25) } }, used);
+        else used.add(id);
+      }
+      if (selected && aircraft.flight_plan && aircraft.flight_plan.length > 1) upsert(`plan-${aircraft.id}`, { polyline: { positions: aircraft.flight_plan.map(world), width: 4, material: new C.PolylineDashMaterialProperty({ color: palette.amber }) } }, used);
     });
     state.restrictions.filter(r => r.active).forEach(restriction => upsert(`restriction-${restriction.id}`, { polygon: {
       hierarchy: new C.PolygonHierarchy(restriction.polygon.points.map(p => world({ ...p, z: restriction.min_altitude }))),
@@ -127,6 +172,21 @@ function draw() {
     }, used));
     dynamicIds.forEach(id => { if (!used.has(id)) viewer?.entities.removeById(id); });
     dynamicIds.clear(); used.forEach(id => dynamicIds.add(id));
+    const target = state.aircraft.find(aircraft => aircraft.id === props.selectedId);
+    if (target) {
+      const moved = !followedPosition || Math.hypot(target.position.x - followedPosition.x,
+        target.position.y - followedPosition.y, target.position.z - followedPosition.z) >= 1;
+      if (target.id !== followedId || moved) {
+        viewer.camera.lookAt(world(target.position), new C.HeadingPitchRange(-0.5, -0.7, 650));
+        viewer.camera.lookAtTransform(C.Matrix4.IDENTITY);
+        followedId = target.id;
+        followedPosition = { ...target.position };
+      }
+    } else if (followedId) {
+      followedId = '';
+      followedPosition = undefined;
+      resetCamera();
+    }
   } finally { viewer.entities.resumeEvents(); viewer.scene.requestRender(); }
 }
 

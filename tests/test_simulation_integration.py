@@ -11,9 +11,12 @@ from algorithms.conflict_detection.continuous import _first_overlap
 from backend.app import create_app
 from backend.config.settings import Settings
 from backend.services.environment_service import EnvironmentService
-from core.models import AircraftStatus, Event, EventType, Position3D, Weather
+from core.models import AircraftStatus, Event, EventType, Polygon2D, Position2D, Position3D, Weather
 from core.repository import create_registry
 from simulation.engine import Engine
+from simulation.aircraft.flight import FlightPlan
+from simulation.engine.planning import _continuous_exit
+from simulation.engine.safety import feasible
 from simulation.environment.builder import rectangle_polygon
 
 
@@ -49,6 +52,29 @@ def test_unresolved_immediate_conflict_stops_the_entire_requested_batch(engine):
     assert engine.conflicts
 
 
+def test_injected_closure_checks_separation_before_next_tick(engine):
+    engine.demo_enabled = False
+    engine.running = True
+    engine.aircraft["UAV-002"].position = engine.aircraft["UAV-001"].position.model_copy()
+    before = {key: a.position.model_copy() for key, a in engine.aircraft.items()}
+    area = rectangle_polygon(2900, 240, 300, 150)
+    event = engine.inject_event(Event(type=EventType.AIRSPACE_CLOSURE,
+        payload={"polygon": area.model_dump(), "min_altitude": 0, "max_altitude": 300}))
+    assert event.result["paused_for_safety"]
+    assert event.result["residual_conflicts"] > 0
+    assert not engine.running and engine.time_s == 0
+    assert {key: a.position for key, a in engine.aircraft.items()} == before
+
+
+def test_start_refuses_motion_when_current_separation_is_lost(engine):
+    engine.demo_enabled = False
+    engine.aircraft["UAV-002"].position = engine.aircraft["UAV-001"].position.model_copy()
+    engine.start()
+    assert not engine.running
+    assert engine.time_s == 0
+    assert engine.conflicts
+
+
 def test_congestion_is_a_real_capacity_change_without_teleport(engine):
     route = max(engine.routes.values(), key=lambda r: r.current_flow)
     before = {key: a.position.model_copy() for key, a in engine.aircraft.items()}
@@ -74,6 +100,61 @@ def test_area_event_replans_or_holds_every_affected_aircraft(engine, event_type)
         plan = engine.plans[aircraft_id]
         points = [engine.aircraft[aircraft_id].position, *plan.positions[plan.cursor:]]
         assert all(not area.intersects_segment(a.xy, b.xy) for a, b in zip(points, points[1:]))
+
+
+@pytest.mark.parametrize("event_type", [EventType.WEATHER, EventType.AIRSPACE_CLOSURE])
+def test_aircraft_caught_inside_new_area_exits_immediately_then_reroutes(engine, event_type):
+    engine.demo_enabled = False
+    engine.step(10)
+    aircraft = engine.aircraft["UAV-001"]
+    start = aircraft.position.model_copy()
+    area = rectangle_polygon(start.x, start.y, 100, 80)
+    payload = ({"affected_area": area.model_dump(), "precipitation": "thunderstorm"}
+               if event_type == EventType.WEATHER else
+               {"polygon": area.model_dump(), "min_altitude": 0, "max_altitude": 300})
+    event = engine.inject_event(Event(type=event_type, payload=payload))
+    assert aircraft.id in event.result["evacuating_aircraft"]
+    assert aircraft.id not in event.result["holding_aircraft"]
+    plan = engine.plans[aircraft.id]
+    assert plan.egress_target and not plan.egress_only
+    assert not area.contains(plan.egress_target.xy)
+    assert feasible(engine, aircraft, plan)
+    assert FlightPlan.from_dict(plan.to_dict()) == plan
+    assert not event.result["residual_conflicts"]
+    engine.step(10)
+    assert aircraft.position != start
+    assert not area.contains(aircraft.position.xy)
+    assert not engine.conflicts
+    points = [aircraft.position, *engine.plans[aircraft.id].positions[engine.plans[aircraft.id].cursor:]]
+    assert all(not area.intersects_segment(a.xy, b.xy) for a, b in zip(points, points[1:]))
+
+
+def test_no_downstream_route_still_exits_area_before_holding(engine):
+    engine.demo_enabled = False
+    engine.step(10)
+    aircraft = engine.aircraft["UAV-001"]
+    source = aircraft.position.model_copy()
+    aircraft.destination = source.model_copy()
+    area = rectangle_polygon(source.x, source.y, 100, 80)
+    event = engine.inject_event(Event(type=EventType.AIRSPACE_CLOSURE, payload={
+        "polygon": area.model_dump(), "min_altitude": 0, "max_altitude": 300}))
+    plan = engine.plans[aircraft.id]
+    assert aircraft.id in event.result["safe_exit_holding_aircraft"]
+    assert plan.egress_only and plan.egress_target and feasible(engine, aircraft, plan)
+    engine.step(5)
+    assert plan.complete
+    assert not area.contains(aircraft.position.xy)
+    assert aircraft.status == AircraftStatus.HOVERING
+    assert aircraft.position != source
+
+
+def test_evacuation_leg_cannot_leave_and_reenter_concave_area():
+    area = Polygon2D(points=[Position2D(x=x, y=y) for x, y in
+                            [(0, 0), (10, 0), (10, 10), (7, 10),
+                             (7, 3), (3, 3), (3, 10), (0, 10)]])
+    source = Position3D(x=1, y=8, z=150)
+    assert not _continuous_exit(source, Position3D(x=11, y=8, z=150), [area])
+    assert _continuous_exit(source, Position3D(x=-8, y=8, z=150), [area])
 
 
 def test_invalid_event_has_no_side_effect(engine):

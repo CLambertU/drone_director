@@ -76,14 +76,18 @@ def process_event(engine, event):
         if event.related_id not in engine.aircraft:
             raise KeyError(event.related_id or "missing aircraft id")
         result = divert_aircraft(engine, event.related_id, parameters.range_derating)
-        # Emergency ownership changes priority immediately. Predictive separation is
-        # reevaluated against all other aircraft before the next movement tick.
-        from simulation.engine.safety import manage_conflicts
-        manage_conflicts(engine)
     elif event.type in (EventType.INFO, EventType.CONFLICT):
         result = {"success": True, "recorded": True}
     else:
         raise ValueError("应急着陆事件仅由飞行状态推进生成")
+    if event.type in (EventType.WEATHER, EventType.AIRSPACE_CLOSURE,
+                      EventType.ROUTE_CONGESTION, EventType.AIRCRAFT_FAILURE):
+        # New routes and hovering aircraft join the same fleet-wide safety check
+        # immediately; every subsequent movement tick checks again.
+        from simulation.engine.safety import manage_conflicts
+        safe_to_advance = manage_conflicts(engine)
+        result["residual_conflicts"] = len(engine.conflicts)
+        result["paused_for_safety"] = not safe_to_advance
     event.result = result
     event.processing_ms = (perf_counter() - started) * 1000
     engine._record(event)
@@ -93,12 +97,14 @@ def process_event(engine, event):
 
 def affected_aircraft(engine, intersects):
     affected = []
-    for aircraft_id, plan in engine.plans.items():
-        if plan.complete:
-            continue
-        points = [engine.aircraft[aircraft_id].position, *plan.positions[plan.cursor:]]
-        if any(intersects(a, b) for a, b in zip(points, points[1:])):
+    for aircraft_id, aircraft in engine.aircraft.items():
+        plan = engine.plans.get(aircraft_id)
+        if aircraft.position.z > 0 and intersects(aircraft.position, aircraft.position):
             affected.append(aircraft_id)
+        elif plan and not plan.complete:
+            points = [aircraft.position, *plan.positions[plan.cursor:]]
+            if any(intersects(a, b) for a, b in zip(points, points[1:])):
+                affected.append(aircraft_id)
     return affected
 
 
@@ -116,10 +122,19 @@ def mark_routes(engine, intersects, status):
 
 
 def replan_affected(engine, affected):
-    replanned, held = [], []
+    replanned, held, evacuating, safe_holding = [], [], [], []
     for aircraft_id in affected:
         old_plan = engine.plans.get(aircraft_id)
         emergency_bay = old_plan.emergency_bay if old_plan else None
-        (replanned if engine.replan(aircraft_id, emergency_bay=emergency_bay) else held).append(aircraft_id)
+        if engine.replan(aircraft_id, emergency_bay=emergency_bay):
+            replanned.append(aircraft_id)
+            plan = engine.plans[aircraft_id]
+            if plan.egress_target:
+                evacuating.append(aircraft_id)
+            if plan.egress_only:
+                safe_holding.append(aircraft_id)
+        else:
+            held.append(aircraft_id)
     return {"success": not held, "affected_aircraft": affected, "replanned_aircraft": replanned,
-            "holding_aircraft": held}
+            "holding_aircraft": held, "evacuating_aircraft": evacuating,
+            "safe_exit_holding_aircraft": safe_holding}

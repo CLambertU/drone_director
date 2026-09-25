@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, ref, shallowRef, watch } from 'vue';
 import { command, connection, exportReport, selectedAircraft, selectedAircraftId, snapshot } from '../stores/simulation';
 import { formatTime, statusLabels } from '../types/simulation';
 
@@ -9,22 +9,34 @@ const aircraftId = ref('');
 const capacity = ref(1);
 const area = ref('east');
 const speed = ref(10);
+const routeOptions = shallowRef<string[]>([]);
+const scenarios = [
+  { id: 'congestion', name: '航路拥堵', detail: '容量下降 · 流量改配', at: 10 },
+  { id: 'weather', name: '东部雷暴', detail: '区内撤离 · 航路重算', at: 25 },
+  { id: 'closure', name: '临时管制', detail: '区内撤离 · 安全绕行', at: 25 },
+  { id: 'failure', name: '飞行故障', detail: '安全航程 · 真实备降', at: 40 },
+  { id: 'conflict', name: '两机冲突', detail: '轨迹预测 · 规则解脱', at: 40 },
+] as const;
+const selectedScenario = computed(() => snapshot.value?.simulation.demo_scenario ?? 'full');
 const activeAircraft = computed(() => snapshot.value?.aircraft.filter(a => ['en_route', 'taking_off', 'hovering'].includes(a.status)) ?? []);
+const selectedRoute = computed(() => snapshot.value?.routes.find(r => r.id === routeId.value));
 const busy = computed(() => connection.busy || connection.state !== 'live');
 const running = computed(() => snapshot.value?.simulation.running ?? false);
 const metrics = computed(() => {
   const m = snapshot.value?.metrics;
   return [
-    ['飞行器', m?.aircraft_count, '架'], ['执行任务', m?.active_mission_count, '项'], ['航路', m?.route_count, '条'],
-    ['预测冲突', m?.conflict_count, '处'], ['拥堵航路', m?.congested_route_count, '条'], ['运行告警', m?.alert_count, '条'],
+    ['飞行器', m?.aircraft_count, '架'], ['执行任务', m?.active_mission_count, '项'], ['当前冲突', m?.conflict_count, '处'],
+    ['航路', m?.route_count, '条'], ['拥堵航路', m?.congested_route_count, '条'], ['运行告警', m?.alert_count, '条'],
     ['平均延误', m?.average_delay_s?.toFixed(1), 's'], ['平均航程', m ? (m.average_flight_distance_m / 1000).toFixed(2) : undefined, 'km'],
     ['航路利用率', m ? (m.route_utilization * 100).toFixed(1) : undefined, '%'],
   ];
 });
 watch(() => snapshot.value?.simulation.speed, value => { if (value !== undefined) speed.value = value; });
-watch(() => snapshot.value?.routes, routes => {
-  if (routes?.length && !routes.some(r => r.id === routeId.value)) routeId.value = [...routes].sort((a, b) => b.current_flow - a.current_flow)[0]!.id;
-});
+watch(() => snapshot.value?.environment_version, () => {
+  const routes = snapshot.value?.routes ?? [];
+  routeOptions.value = routes.map(route => route.id);
+  if (routes.length && !routeOptions.value.includes(routeId.value)) routeId.value = [...routes].sort((a, b) => b.current_flow - a.current_flow)[0]!.id;
+}, { immediate: true });
 watch(activeAircraft, aircraft => {
   if (!aircraft.some(a => a.id === aircraftId.value)) aircraftId.value = aircraft[0]?.id ?? '';
 });
@@ -52,18 +64,18 @@ async function inject() {
 const canInject = computed(() => !!snapshot.value?.aircraft.length && !busy.value &&
   (type.value !== 'event_aircraft_failure' || !!aircraftId.value) &&
   (type.value !== 'event_route_congestion' || (!!routeId.value && Number.isInteger(capacity.value) && capacity.value > 0)));
+
+async function previewScenario(item: (typeof scenarios)[number]) {
+  const created = await command('/simulation/demo', { aircraft_count: 24, seed: 42, scenario: item.id });
+  if (created) await command('/simulation/step', { steps: item.at + 1 });
+}
 </script>
 
 <template>
   <aside class="control-panel" aria-label="运行指标与仿真控制">
-    <div class="panel-heading"><span>运行总览</span><span class="small-code">OPERATIONS</span></div>
-    <div class="metric-grid">
-      <div v-for="(item, index) in metrics" :key="String(item[0])" class="metric" :class="{ caution: index >= 3 && index <= 5 && Number(item[1]) > 0 }">
-        <span>{{ item[0] }}</span><strong>{{ item[1] ?? '—' }}<small>{{ item[2] }}</small></strong>
-      </div>
-    </div>
-    <section class="control-section">
-      <div class="section-title"><h2>仿真控制</h2><span class="status-pill" :class="{ active: running }">{{ running ? '运行中' : '已暂停' }}</span></div>
+    <div class="panel-heading"><span>演示驾驶台</span><span class="small-code">LIVE OPERATIONS</span></div>
+    <section class="control-section playback-section">
+      <div class="section-title"><h2>仿真进程</h2><span class="status-pill" :class="{ active: running }">{{ running ? '运行中' : '已暂停' }}</span></div>
       <div class="sim-clock"><span>仿真时间</span><strong>{{ formatTime(snapshot?.simulation.time_s ?? 0) }}</strong><small>{{ snapshot?.simulation.speed ?? 1 }}×</small></div>
       <div class="button-row">
         <button v-if="!running" class="primary" :disabled="busy || !snapshot?.aircraft.length" @click="command('/simulation/start')"><span aria-hidden="true">▶</span> 启动仿真</button>
@@ -71,15 +83,32 @@ const canInject = computed(() => !!snapshot.value?.aircraft.length && !busy.valu
         <button :disabled="busy || running || !snapshot?.aircraft.length" @click="command('/simulation/step', { steps: 1 })">单步推进</button>
       </div>
       <div class="speed-row"><label for="simulation-speed">时间倍率</label><select id="simulation-speed" v-model.number="speed" :disabled="busy" @change="command('/simulation/speed', { speed })"><option :value="1">1× 实时</option><option :value="5">5×</option><option :value="10">10×</option><option :value="20">20×</option><option :value="50">50×</option></select></div>
-      <button class="wide secondary" :disabled="busy || running" @click="command('/simulation/demo', { aircraft_count: 100, seed: 42 })">{{ snapshot?.aircraft.length ? '重新生成 100 机演示场景' : '生成 100 机演示场景' }}</button>
-      <p class="control-note">{{ snapshot?.simulation.demo_complete ? '四类扰动已执行，剩余任务继续调度。' : snapshot?.aircraft.length ? `自动演示阶段：${snapshot.simulation.demo_stage} / 4` : '生成城市、任务与飞行器后启动。' }}</p>
+      <button class="wide secondary" :disabled="busy || running" @click="command('/simulation/demo', { aircraft_count: 100, seed: 42, scenario: 'full' })">{{ snapshot?.aircraft.length && selectedScenario === 'full' ? '重置 100 机完整演示' : '生成 100 机完整演示' }}</button>
+      <p class="control-note">{{ !snapshot?.aircraft.length ? '可先选择下方单项场景，直接查看事件。' : selectedScenario === 'full' ? (snapshot.simulation.demo_complete ? '四类扰动已执行，任务仍在继续调度。' : `完整演示阶段 ${snapshot.simulation.demo_stage} / 4`) : (snapshot.simulation.demo_complete ? '本场景已结束，可检查结果。' : snapshot.simulation.demo_stage ? '事件已触发。点击启动，观察后续处置。' : '场景已生成，点击启动。') }}</p>
     </section>
+    <section class="control-section scenario-section">
+      <div class="section-title"><h2>单项事件场景</h2><span class="small-code">5 SCENARIOS</span></div>
+      <p class="scenario-intro">点击后停在事件发生的第一秒；启动仿真，观察后续行动。</p>
+      <div class="scenario-grid">
+        <button v-for="item in scenarios" :key="item.id" class="scenario-card" :class="{ selected: selectedScenario === item.id && !!snapshot?.aircraft.length }"
+          :disabled="busy || running" @click="previewScenario(item)">
+          <span class="scenario-title">{{ item.name }}<small>{{ item.at }} s</small></span><span class="scenario-detail">{{ item.detail }}</span>
+        </button>
+      </div>
+      <p class="control-note">切换会重置当前运行；需要保留结果时先导出报告。</p>
+    </section>
+    <div class="metrics-heading"><h2>运行指标</h2><span class="small-code">ACTUAL DATA</span></div>
+    <div class="metric-grid">
+      <div v-for="(item, index) in metrics" :key="String(item[0])" class="metric" :class="{ 'primary-metric': index < 3, caution: [2, 4, 5].includes(index) && Number(item[1]) > 0 }">
+        <span>{{ item[0] }}</span><strong>{{ item[1] ?? '—' }}<small>{{ item[2] }}</small></strong>
+      </div>
+    </div>
     <section class="control-section">
       <div class="section-title"><h2>动态事件注入</h2><span class="small-code">LIVE INPUT</span></div>
       <label class="field-label" for="event-type">事件类型</label>
       <select id="event-type" v-model="type" :disabled="busy"><option value="event_route_congestion">航路拥堵 · 收缩容量</option><option value="event_weather">雷暴天气 · 东部扰动</option><option value="event_aircraft_failure">飞行器故障 · 应急备降</option><option value="event_airspace_closure">临时空域管制 · 封闭区域</option></select>
       <div v-if="type === 'event_route_congestion'" class="event-fields">
-        <label>目标航路<select v-model="routeId" :disabled="busy"><option v-for="route in snapshot?.routes" :key="route.id" :value="route.id">{{ route.id }} · {{ route.current_flow }}/{{ route.capacity }}</option></select></label>
+        <label>目标航路 <small v-if="selectedRoute">{{ selectedRoute.current_flow }}/{{ selectedRoute.capacity }}</small><select v-model="routeId" :disabled="busy"><option v-for="id in routeOptions" :key="id" :value="id">{{ id }}</option></select></label>
         <label class="compact-field">新容量<input v-model.number="capacity" type="number" min="1" step="1" :disabled="busy" /></label>
       </div>
       <label v-else-if="type === 'event_aircraft_failure'" class="field-label">目标飞行器<select v-model="aircraftId" :disabled="busy"><option v-if="!activeAircraft.length" value="">暂无可注入故障的飞行器</option><option v-for="aircraft in activeAircraft" :key="aircraft.id" :value="aircraft.id">{{ aircraft.id }} · {{ statusLabels[aircraft.status] || aircraft.status }}</option></select></label>

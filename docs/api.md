@@ -46,12 +46,14 @@ PUT 替换可写字段，路径 ID 是固定标识；内部统计字段保留，
 | 方法 | 路径 | 请求 |
 | --- | --- | --- |
 | GET | `/api/simulation/state` | 完整运行快照 |
-| POST | `/api/simulation/demo` | `{"aircraft_count":100,"seed":42}`，生成后暂停 |
+| POST | `/api/simulation/demo` | `{"aircraft_count":100,"seed":42,"scenario":"full"}`，生成后暂停 |
 | POST | `/api/simulation/start` | 启动/恢复 |
 | POST | `/api/simulation/pause` | 暂停并保存检查点 |
 | POST | `/api/simulation/speed` | `{"speed":10}` |
 | POST | `/api/simulation/step` | `{"steps":1}`，仅暂停时可用 |
 | GET | `/api/simulation/report` | 实际指标、历史序列和事件结果 |
+
+`scenario` 可选 `full`、`congestion`、`weather`、`closure`、`failure`、`conflict`。五个单项场景建议指定 `aircraft_count:24`。返回快照的 `simulation.demo_scenario` 标明当前场景；切换场景清空原运行数据并从仿真零秒重新开始。
 
 事件示例（经 `POST /api/events`）：
 
@@ -63,11 +65,11 @@ PUT 替换可写字段，路径 ID 是固定标识；内部统计字段保留，
 {"type":"event_aircraft_failure","related_id":"UAV-001","severity":"emergency","payload":{"range_derating":0.55}}
 ```
 
-`event_weather` 的 `payload` 可含 `affected_area`（以局部米制 x/y 定义的 `points` 多边形）、`wind_speed`、`visibility_m` 和 `precipitation`；`event_airspace_closure` 可含 `polygon`、`min_altitude`、`max_altitude` 和 `reason`。完整模型可在 `/docs` 中查看。每次事件记录受影响飞行器、已改航/等待飞行器及处理耗时；故障记录备降点与计划航路，实际到达另有 `event_emergency_landing` 记录。
+`event_weather` 的 `payload` 可含 `affected_area`（以局部米制 x/y 定义的 `points` 多边形）、`wind_speed`、`visibility_m` 和 `precipitation`；`event_airspace_closure` 可含 `polygon`、`min_altitude`、`max_altitude` 和 `reason`。完整模型可在 `/docs` 中查看。每次事件记录受影响飞行器、已改航/等待飞行器及处理耗时；雷暴与管制事件的 `result.evacuating_aircraft` 列出事件发生时位于区域内、正在沿安全出口撤离的飞行器。若出口可达但后续航路暂不可达，则列入 `safe_exit_holding_aircraft`，先撤离至区域外再等待；完全没有安全出口的飞行器列入 `holding_aircraft` 并告警。扰动事件还返回全机复检后的 `residual_conflicts` 和 `paused_for_safety`。故障记录备降点与计划航路，实际到达另有 `event_emergency_landing` 记录。
 
 ## WebSocket
 
-连接 `/api/ws`，服务端每约 200ms 发送一个快照：
+连接 `/api/ws`，运行状态变化时服务端约每 200ms 发送一个快照；状态不变时约每 2 秒发送一次，以减少重复序列化和浏览器重绘：
 
 ```json
 {"type":"snapshot","sequence":1,"data":{"version":1,"environment_version":1,"simulation":{},"aircraft":[],"metrics":{},"history":[],"events":[]}}

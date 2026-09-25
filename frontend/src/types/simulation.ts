@@ -13,7 +13,7 @@ export interface Restriction { id: string; polygon: Polygon; min_altitude: numbe
 export interface Conflict { aircraft_a: string; aircraft_b: string; conflict_time: number; conflict_position: Position; severity: string }
 export interface SimulationEvent {
   id: string; type: string; timestamp: string; simulation_time: number; processing_ms: number;
-  description: string; severity: string; handled: boolean; result: Record<string, unknown>;
+  description: string; severity: string; handled: boolean; related_id?: string | null; result: Record<string, unknown>;
 }
 export interface Environment {
   name: string; origin: { latitude: number; longitude: number; altitude: number };
@@ -29,7 +29,7 @@ export interface Metrics {
 export interface HistoryPoint { time_s: number; conflicts: number; route_utilization: number; average_delay_s: number; total_distance_m: number }
 export interface Snapshot {
   version: number; environment_version: number;
-  simulation: { time_s: number; running: boolean; speed: number; tick_seconds: number; demo_stage: number | string; demo_complete: boolean };
+  simulation: { time_s: number; running: boolean; speed: number; tick_seconds: number; demo_stage: number; demo_complete: boolean; demo_scenario: 'full' | 'congestion' | 'weather' | 'closure' | 'failure' | 'conflict' };
   aircraft: Aircraft[]; missions: unknown[]; waypoints: Waypoint[]; routes: Route[];
   weather: Weather[]; restrictions: Restriction[]; conflicts: Conflict[]; events: SimulationEvent[];
   metrics: Metrics; history: HistoryPoint[]; environment?: Environment | null;
