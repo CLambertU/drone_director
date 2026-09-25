@@ -4,11 +4,27 @@
 
 ## 启动
 
-需要 Windows PowerShell、Python 3.12+、uv 和 Node.js 22.12+。在仓库根目录执行：
+需要 Windows PowerShell 5.1（或 PowerShell 7+）、Python 3.12+、uv 和 Node.js 22.12+。
+
+首次运行若 PowerShell 提示 "无法加载文件…因为在此系统上禁止运行脚本"，请先以**当前用户**放宽执行策略一次（无需管理员）：
+
+~~~powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+~~~
+
+在仓库根目录执行：
 
 ~~~powershell
 .\scripts\setup.ps
 .\scripts\run_demo.ps1
+~~~
+
+无法修改执行策略的机器（公司锁定环境），可以每次都绕过：
+
+~~~powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_demo.ps1
+# 或自定义端口
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_demo.ps1 -BackendPort 8013 -FrontendPort 5174
 ~~~
 
 访问 http://127.0.0.1:5173 ，点击“生成 100 机演示场景”，再点击“启动仿真”。默认后端端口 8011；如被占用可运行 .\scripts\run_demo.ps1 -BackendPort 8013 -FrontendPort 5174。退出脚本会停止本次启动的后端。单独启动后端用 .\scripts\run_backend.ps1，单独启动前端用 .\scripts\run_frontend.ps1，测试用 .\scripts\run_tests.ps1。
